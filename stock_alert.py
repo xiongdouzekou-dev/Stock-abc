@@ -6,7 +6,7 @@ import json
 import time
 
 # Webhook URL
-WEBHOOK_URL = "https://discord.com/api/webhooks/1544938438028165142/6b7CR_1riyUH9Rqp2b84Q4Z9yYb8IIl74jJIzbyDOpep_1olVJVdqoV80QgQVmEbwhK2"
+WEBHOOK_URL = "https://discord.com/api/webhooks/1544954027769466900/qc2WGESgTRdfPsLKULa5MwOZeFDC0Zf2pqxoNwfc3-_msbbCP6dJx9_wnQ8vH3n7uo1c"
 PORTFOLIO_FILE = "portfolio.json"
 TICKERS_FILE = "tickers.json"
 WORKFLOW_URL = "https://github.com/xiongdouzekou-dev/Stock-abc/actions/workflows/schedule.yml"
@@ -143,7 +143,7 @@ def send_discord(buy_list, sell_list, pnl_text):
             message += "🌟 **【買い推奨 TOP5】**\n"
             for i, b in enumerate(top5_buys, 1):
                 message += f"{i}. **{b['name']}** ({b['ticker']}) - {b['desc']}\n"
-                else:
+    else:
         message += "・現在条件を満たす銘柄はありません。\n"
 
     message += "\n"
@@ -171,7 +171,6 @@ def send_discord(buy_list, sell_list, pnl_text):
                f"2. 各項目に以下のように入力する：\n" \
                f"   - **action_type**: `add` のままでOK\n" \
                f"   - **stock_name**: 銘柄名 (例: `トヨタ自動車`)\n" \
-               f"   - **ticker**: ティッカー記号 (例: `7203.T` または `AAPL`)\n" \
                f"   - **buy_price**: 購入したときの株価 (例: `2500`)\n" \
                f"   - **shares**: 購入した株数 (例: `1`)\n" \
                f"3. 緑色の **「Run workflow」** ボタンを押す"
@@ -180,7 +179,13 @@ def send_discord(buy_list, sell_list, pnl_text):
         message = message[:1950] + "..."
 
     payload = {"content": message}
-    requests.post(WEBHOOK_URL, json=payload)
+    response = requests.post(WEBHOOK_URL, json=payload)
+    
+    if response.status_code not in [200, 204]:
+        print(f"Discord Error: {response.status_code} - {response.text}")
+        exit(1)
+    else:
+        print("Discord notification sent successfully.")
 
 if __name__ == "__main__":
     buys, sells = analyze_stocks()
