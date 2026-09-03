@@ -3,17 +3,53 @@ import pandas as pd
 import requests
 import os
 
-# GitHubのシークレットからWebhook URLを読み込む
-# ※あなたが保存した「WEBHOOK」という名前を指定しています
 WEBHOOK_URL = os.environ.get("WEBHOOK")
 
-# 監視したい銘柄のリスト（日本株は末尾に .T をつけます）
-# ※ここを増やせば監視銘柄を追加できます
+# PayPay証券で取引される代表的な日本株・米国株の主要銘柄リスト
 TICKERS = {
+    # 日本株（高配当・人気株）
     "トヨタ自動車": "7203.T",
-    "三菱UFJ": "8306.T",
+    "三菱UFJフィナンシャル・グループ": "8306.T",
+    "日本電信電話 (NTT)": "9432.T",
+    "ソフトバンクグループ": "9984.T",
+    "ソニーグループ": "6758.T",
+    "任天堂": "7974.T",
+    "三菱商事": "8058.T",
+    "三井住友フィナンシャルグループ": "8316.T",
+    "本田技研工業": "7267.T",
+    "伊藤忠商事": "8001.T",
+    "武田薬品工業": "4502.T",
+    "KDDI": "9433.T",
+    "オリックス": "8591.T",
+    "キーエンス": "6861.T",
+    "ファーストリテイリング": "9983.T",
+    
+    # 米国株（GAFAM・主要ハイテク・高配当）
     "Apple": "AAPL",
-    "NVIDIA": "NVDA"
+    "Microsoft": "MSFT",
+    "NVIDIA": "NVDA",
+    "Amazon": "AMZN",
+    "Alphabet (Google)": "GOOGL",
+    "Meta Platforms": "META",
+    "Tesla": "TSLA",
+    "Netflix": "NFLX",
+    "Intel": "INTC",
+    "AMD": "AMD",
+    "Coca-Cola": "KO",
+    "PepsiCo": "PEP",
+    "Procter & Gamble": "PG",
+    "Johnson & Johnson": "JNJ",
+    "JPMorgan Chase": "JPM",
+    "Visa": "V",
+    "Mastercard": "MA",
+    "Walmart": "WMT",
+    "Disney": "DIS",
+    "Exxon Mobil": "XOM",
+    
+    # 主要ETF
+    "S&P 500 ETF (SPY)": "SPY",
+    "NASDAQ 100 ETF (QQQ)": "QQQ",
+    "高配当株ETF (VYM)": "VYM"
 }
 
 def calculate_rsi(data, period=14):
@@ -29,13 +65,11 @@ def check_signals():
 
     for name, ticker in TICKERS.items():
         try:
-            # 過去3ヶ月のデータを取得
             stock = yf.Ticker(ticker)
             hist = stock.history(period="3mo")
-            if hist.empty:
+            if hist.empty or len(hist) < 25:
                 continue
 
-            # 移動平均線とRSIを計算
             hist['SMA5'] = hist['Close'].rolling(window=5).mean()
             hist['SMA25'] = hist['Close'].rolling(window=25).mean()
             hist['RSI'] = calculate_rsi(hist)
@@ -43,17 +77,14 @@ def check_signals():
             latest = hist.iloc[-1]
             prev = hist.iloc[-2]
 
-            # PERを取得
             info = stock.info
             per = info.get('trailingPE', 'データなし')
             if isinstance(per, float):
                 per = round(per, 1)
 
-            # クロスの判定
             golden_cross = (prev['SMA5'] <= prev['SMA25']) and (latest['SMA5'] > latest['SMA25'])
             dead_cross = (prev['SMA5'] >= prev['SMA25']) and (latest['SMA5'] < latest['SMA25'])
 
-            # 買い条件（RSI 30以下 または ゴールデンクロス）
             buy_reasons = []
             if latest['RSI'] <= 30:
                 buy_reasons.append(f"RSI {latest['RSI']:.1f} (売られすぎ)")
@@ -63,7 +94,6 @@ def check_signals():
             if buy_reasons:
                 buy_list.append(f"・**{name}** ({ticker}): {', '.join(buy_reasons)} / PER: {per}")
 
-            # 売り条件（RSI 70以上 または デッドクロス）
             sell_reasons = []
             if latest['RSI'] >= 70:
                 sell_reasons.append(f"RSI {latest['RSI']:.1f} (買われすぎ)")
@@ -76,30 +106,29 @@ def check_signals():
         except Exception as e:
             print(f"エラー: {name} - {e}")
 
-        return buy_list, sell_list
+    return buy_list, sell_list
 
 def send_discord(buy_list, sell_list):
     if not WEBHOOK_URL:
         print("Webhook URLが設定されていません。")
         return
 
-    message = "📊 **【定期確認】株式シグナルレポート**\n\n"
+    # Discordの文字数制限対策としてメッセージを分割・調整
+    message = "📊 **【定期確認】株式シグナルレポート（主要銘柄網羅版）**\n\n"
     
     if buy_list:
-        message += "🟢 **【買い候補】**\n" + "\n".join(buy_list) + "\n\n"
+        message += "🟢 **【買い候補】**\n" + "\n".join(buy_list[:15]) + "\n\n"
     else:
         message += "🟢 **【買い候補】**\n・現在条件を満たす銘柄はありません。\n\n"
 
     if sell_list:
-        message += "🔴 **【売り候補】**\n" + "\n".join(sell_list) + "\n\n"
+        message += "🔴 **【売り候補】**\n" + "\n".join(sell_list[:15]) + "\n\n"
     else:
         message += "🔴 **【売り候補】**\n・現在条件を満たす銘柄はありません。\n\n"
 
-    # Discordへ送信
     payload = {"content": message}
     requests.post(WEBHOOK_URL, json=payload)
 
 if __name__ == "__main__":
     buy, sell = check_signals()
     send_discord(buy, sell)
-
