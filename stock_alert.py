@@ -8,27 +8,14 @@ import time
 # Webhook URL
 WEBHOOK_URL = "https://discord.com/api/webhooks/1544938438028165142/6b7CR_1riyUH9Rqp2b84Q4Z9yYb8IIl74jJIzbyDOpep_1olVJVdqoV80QgQVmEbwhK2"
 PORTFOLIO_FILE = "portfolio.json"
+TICKERS_FILE = "tickers.json"
 WORKFLOW_URL = "https://github.com/xiongdouzekou-dev/Stock-abc/actions/workflows/schedule.yml"
 
-TICKERS = {
-    "トヨタ自動車": "7203.T",
-    "三菱UFJフィナンシャル・グループ": "8306.T",
-    "日本電信電話 (NTT)": "9432.T",
-    "ソフトバンクグループ": "9984.T",
-    "ソニーグループ": "6758.T",
-    "任天堂": "7974.T",
-    "三菱商事": "8058.T",
-    "三井住友フィナンシャルグループ": "8316.T",
-    "本田技研工業": "7267.T",
-    "伊藤忠商事": "8001.T",
-    "Apple": "AAPL",
-    "Microsoft": "MSFT",
-    "NVIDIA": "NVDA",
-    "Amazon": "AMZN",
-    "Tesla": "TSLA",
-    "S&P 500 ETF (SPY)": "SPY",
-    "NASDAQ 100 ETF (QQQ)": "QQQ"
-}
+def load_tickers():
+    if not os.path.exists(TICKERS_FILE):
+        return {}
+    with open(TICKERS_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 def calculate_rsi(data, period=14):
     delta = data['Close'].diff()
@@ -38,15 +25,16 @@ def calculate_rsi(data, period=14):
     return 100 - (100 / (1 + rs))
 
 def analyze_stocks():
+    tickers = load_tickers()
     scored_buys = []
     scored_sells = []
 
-    for name, ticker in TICKERS.items():
+    for name, ticker in tickers.items():
         try:
             stock = yf.Ticker(ticker)
             hist = stock.history(period="3mo")
             if hist.empty or len(hist) < 25:
-                time.sleep(0.3)
+                time.sleep(0.1)
                 continue
 
             hist['SMA5'] = hist['Close'].rolling(window=5).mean()
@@ -100,7 +88,7 @@ def analyze_stocks():
 
         except Exception as e:
             pass
-        time.sleep(0.3)
+        time.sleep(0.1)
 
     scored_buys.sort(key=lambda x: x['score'], reverse=True)
     scored_sells.sort(key=lambda x: x['score'], reverse=True)
@@ -155,7 +143,7 @@ def send_discord(buy_list, sell_list, pnl_text):
             message += "🌟 **【買い推奨 TOP5】**\n"
             for i, b in enumerate(top5_buys, 1):
                 message += f"{i}. **{b['name']}** ({b['ticker']}) - {b['desc']}\n"
-    else:
+                else:
         message += "・現在条件を満たす銘柄はありません。\n"
 
     message += "\n"
