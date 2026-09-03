@@ -5,7 +5,7 @@ import os
 import json
 import time
 
-# 新しいWebhook URLを直接設定
+# Webhook URL
 WEBHOOK_URL = "https://discord.com/api/webhooks/1544938438028165142/6b7CR_1riyUH9Rqp2b84Q4Z9yYb8IIl74jJIzbyDOpep_1olVJVdqoV80QgQVmEbwhK2"
 PORTFOLIO_FILE = "portfolio.json"
 WORKFLOW_URL = "https://github.com/xiongdouzekou-dev/Stock-abc/actions/workflows/schedule.yml"
@@ -65,7 +65,6 @@ def analyze_stocks():
             golden_cross = (prev['SMA5'] <= prev['SMA25']) and (latest['SMA5'] > latest['SMA25'])
             dead_cross = (prev['SMA5'] >= prev['SMA25']) and (latest['SMA5'] < latest['SMA25'])
 
-            # スコアリング計算
             buy_score = 0
             buy_reasons = []
             if latest['RSI'] <= 30:
@@ -146,12 +145,11 @@ def send_discord(buy_list, sell_list, pnl_text):
 
     message = "📊 **【株式シグナル & 収支レポート】**\n\n"
 
-    # 買い推奨
     message += "🟢 **【買い推奨】**\n"
     if buy_list:
         best_buy = buy_list[0]
-       message += f"🏆 **【👑 総合No.1買い銘柄】**\n👉 **{best_buy['name']}** ({best_buy['ticker']}) / 理由: {best_buy['desc']} / 価格: {best_buy['price']:.1f}\n\n"
-        
+        message += f"🏆 **【👑 総合No.1買い銘柄】**\n👉 **{best_buy['name']}** ({best_buy['ticker']}) / 理由: {best_buy['desc']} / 価格: {best_buy['price']:.1f}\n\n"
+
         top5_buys = buy_list[1:6]
         if top5_buys:
             message += "🌟 **【買い推奨 TOP5】**\n"
@@ -162,7 +160,6 @@ def send_discord(buy_list, sell_list, pnl_text):
 
     message += "\n"
 
-    # 売り推奨
     message += "🔴 **【売り推奨】**\n"
     if sell_list:
         best_sell = sell_list[0]
@@ -178,7 +175,6 @@ def send_discord(buy_list, sell_list, pnl_text):
 
     message += "\n💼 **【あなたの保有銘柄・収支報告】**\n" + pnl_text
     
-    # 入力ガイドとリンク
     message += f"\n\n📝 **【売買記録の入力方法】**\n" \
                f"株を購入したら、下のリンクからフォームを開いて記録してください！\n" \
                f"👉 [売買記録入力フォームを開く]({WORKFLOW_URL})\n\n" \
