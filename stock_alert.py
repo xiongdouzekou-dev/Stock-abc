@@ -2,13 +2,16 @@ import yfinance as yf
 import pandas as pd
 import requests
 import os
+import json
 import time
 
 WEBHOOK_URL = os.environ.get("WEBHOOK")
+PORTFOLIO_FILE = "portfolio.json"
 
-# PayPay証券で取引可能な代表的・主要な日本株および米国株の拡張リスト
+# あなたのGitHubリポジトリのワークフロー入力画面（フォーム）への直接リンク
+WORKFLOW_URL = "https://github.com/xiongdouzekou-dev/Stock-abc/actions/workflows/schedule.yml"
+
 TICKERS = {
-    # 日本株（主要・高配当・グロース）
     "トヨタ自動車": "7203.T",
     "三菱UFJフィナンシャル・グループ": "8306.T",
     "日本電信電話 (NTT)": "9432.T",
@@ -19,61 +22,13 @@ TICKERS = {
     "三井住友フィナンシャルグループ": "8316.T",
     "本田技研工業": "7267.T",
     "伊藤忠商事": "8001.T",
-    "武田薬品工業": "4502.T",
-    "KDDI": "9433.T",
-    "オリックス": "8591.T",
-    "キーエンス": "6861.T",
-    "ファーストリテイリング": "9983.T",
-    "東京エレクトロン": "8035.T",
-    "リクルートホールディングス": "6098.T",
-    "信越化学工業": "4063.T",
-    "日立製作所": "6501.T",
-    "三菱重工業": "7011.T",
-    "富士通": "6702.T",
-    "デンソー": "6902.T",
-    "コマツ": "6301.T",
-    "パナソニック ホールディングス": "6752.T",
-    "ENEOSホールディングス": "5020.T",
-
-    # 米国株（GAFAM・主要ハイテク・バリュー・高配当）
     "Apple": "AAPL",
     "Microsoft": "MSFT",
     "NVIDIA": "NVDA",
     "Amazon": "AMZN",
-    "Alphabet (Google)": "GOOGL",
-    "Meta Platforms": "META",
     "Tesla": "TSLA",
-    "Netflix": "NFLX",
-    "Intel": "INTC",
-    "AMD": "AMD",
-    "Qualcomm": "QCOM",
-    "Broadcom": "AVGO",
-    "Adobe": "ADBE",
-    "Salesforce": "CRM",
-    "Coca-Cola": "KO",
-    "PepsiCo": "PEP",
-    "Procter & Gamble": "PG",
-    "Johnson & Johnson": "JNJ",
-    "Pfizer": "PFE",
-    "Merck": "MRK",
-    "JPMorgan Chase": "JPM",
-    "Bank of America": "BAC",
-    "Visa": "V",
-    "Mastercard": "MA",
-    "Walmart": "WMT",
-    "Costco": "COST",
-    "McDonald's": "MCD",
-    "Disney": "DIS",
-    "Nike": "NKE",
-    "Exxon Mobil": "XOM",
-    "Chevron": "CVX",
-    
-    # 主要ETF
     "S&P 500 ETF (SPY)": "SPY",
-    "NASDAQ 100 ETF (QQQ)": "QQQ",
-    "ダウ工業株30種平均ETF (DIA)": "DIA",
-    "高配当株ETF (VYM)": "VYM",
-    "Vanguard Total Stock Market (VTI)": "VTI"
+    "NASDAQ 100 ETF (QQQ)": "QQQ"
 }
 
 def calculate_rsi(data, period=14):
@@ -83,17 +38,16 @@ def calculate_rsi(data, period=14):
     rs = gain / loss
     return 100 - (100 / (1 + rs))
 
-def check_signals():
-    buy_list = []
-    sell_list = []
+def analyze_stocks():
+    scored_buys = []
+    scored_sells = []
 
     for name, ticker in TICKERS.items():
         try:
             stock = yf.Ticker(ticker)
             hist = stock.history(period="3mo")
             if hist.empty or len(hist) < 25:
-                # データが足りない場合はスキップして次の銘柄へ
-                time.sleep(1.0)
+                time.sleep(0.5)
                 continue
 
             hist['SMA5'] = hist['Close'].rolling(window=5).mean()
@@ -102,62 +56,100 @@ def check_signals():
 
             latest = hist.iloc[-1]
             prev = hist.iloc[-2]
+            current_price = latest['Close']
 
             info = stock.info
-            per = info.get('trailingPE', 'データなし')
-            if isinstance(per, float):
-                per = round(per, 1)
+            per = info.get('trailingPE', 0)
+            if not isinstance(per, (int, float)):
+                per = 0
 
             golden_cross = (prev['SMA5'] <= prev['SMA25']) and (latest['SMA5'] > latest['SMA25'])
             dead_cross = (prev['SMA5'] >= prev['SMA25']) and (latest['SMA5'] < latest['SMA25'])
 
+            # スコアリング計算
+            buy_score = 0
             buy_reasons = []
             if latest['RSI'] <= 30:
-                buy_reasons.append(f"RSI {latest['RSI']:.1f} (売られすぎ)")
+                buy_score += (30 - latest['RSI'])
+                buy_reasons.append(f"RSI {latest['RSI']:.1f}")
             if golden_cross:
-                buy_reasons.append("ゴールデンクロス発生")
-            
-            if buy_reasons:
-                buy_list.append(f"・**{name}** ({ticker}): {', '.join(buy_reasons)} / PER: {per}")
+                buy_score += 15
+                buy_reasons.append("ゴールデンクロス")
+            if per > 0 and per < 15:
+                buy_score += 10
+                buy_reasons.append(f"PER {per:.1f}")
 
+            if buy_score > 0:
+                scored_buys.append({
+                    "name": name, "ticker": ticker, "score": buy_score, 
+                    "price": current_price, "desc": ", ".join(buy_reasons)
+                })
+
+            sell_score = 0
             sell_reasons = []
             if latest['RSI'] >= 70:
-                sell_reasons.append(f"RSI {latest['RSI']:.1f} (買われすぎ)")
+                sell_score += (latest['RSI'] - 70)
+                sell_reasons.append(f"RSI {latest['RSI']:.1f}")
             if dead_cross:
-                sell_reasons.append("デッドクロス発生")
-            
-            if sell_reasons:
-                sell_list.append(f"・**{name}** ({ticker}): {', '.join(sell_reasons)} / PER: {per}")
+                sell_score += 15
+                sell_reasons.append("デッドクロス")
+
+            if sell_score > 0:
+                scored_sells.append({
+                    "name": name, "ticker": ticker, "score": sell_score, 
+                    "price": current_price, "desc": ", ".join(sell_reasons)
+                })
 
         except Exception as e:
             print(f"エラー: {name} - {e}")
+        time.sleep(0.5)
 
-        # サーバーに負荷をかけず確実に取得するため、1銘柄ごとに1秒間スパンを開ける
-        time.sleep(1.0)
+    scored_buys.sort(key=lambda x: x['score'], reverse=True)
+    scored_sells.sort(key=lambda x: x['score'], reverse=True)
+    return scored_buys, scored_sells
 
-    return buy_list, sell_list
+def calculate_portfolio_pnl():
+    if not os.path.exists(PORTFOLIO_FILE):
+        return "・現在記録されている保有株はありません。"
+    
+    with open(PORTFOLIO_FILE, "r", encoding="utf-8") as f:
+        portfolio = json.load(f)
 
-def send_discord(buy_list, sell_list):
+    if not portfolio:
+        return "・保有・売買履歴が空です。"
+
+    report_lines = []
+    total_pnl = 0
+
+    for item in portfolio:
+        ticker = item["ticker"]
+        buy_price = item["buy_price"]
+        shares = item["shares"]
+        name = item["name"]
+
+        try:
+            current_price = yf.Ticker(ticker).history(period="1d")['Close'].iloc[-1]
+            pnl = (current_price - buy_price) * shares
+            pnl_pct = ((current_price - buy_price) / buy_price) * 100
+            total_pnl += pnl
+            sign = "+" if pnl >= 0 else ""
+            report_lines.append(f"・**{name}**: 取得単価 {buy_price:.1f} → 現在 {current_price:.1f} | 評価損益: {sign}{pnl:.1f}円 ({sign}{pnl_pct:.1f}%)")
+        except:
+            report_lines.append(f"・**{name}**: 価格取得失敗")
+
+    total_sign = "+" if total_pnl >= 0 else ""
+    report_lines.append(f"\n**総合評価損益合計: {total_sign}{total_pnl:.1f}円**")
+    return "\n".join(report_lines)
+
+def send_discord(buy_list, sell_list, pnl_text):
     if not WEBHOOK_URL:
-        print("Webhook URLが設定されていません。")
         return
 
-    # 多くの銘柄がヒットした場合にDiscordの文字数制限（2000文字）を超えないよう上位20件に制限
-    message = "📊 **【定期確認】株式シグナルレポート（全主要銘柄チェック版）**\n\n"
-    
+    message = "📊 **【株式シグナル & 収支レポート】**\n\n"
+
+    # 買うべきベスト1 ＆ TOP5
+    message += "🟢 **【買い推奨】**\n"
     if buy_list:
-        message += "🟢 **【買い候補】**\n" + "\n".join(buy_list[:20]) + "\n\n"
-    else:
-        message += "🟢 **【買い候補】**\n・現在条件を満たす銘柄はありません。\n\n"
-
-    if sell_list:
-        message += "🔴 **【売り候補】**\n" + "\n".join(sell_list[:20]) + "\n\n"
-    else:
-        message += "🔴 **【売り候補】**\n・現在条件を満たす銘柄はありません。\n\n"
-
-    payload = {"content": message}
-    requests.post(WEBHOOK_URL, json=payload)
-
-if __name__ == "__main__":
-    buy, sell = check_signals()
-    send_discord(buy, sell)
+        best_buy = buy_list[0]
+        message += f"🏆 **【👑 総合No.1買い銘柄】**\n👉 **{best_buy['name']}** ({best_buy['ticker']}) / 理由: {best_buy['desc']} / 価格: {best_buy['price']:.1f}\n\n"
+ 
