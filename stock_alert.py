@@ -2,12 +2,13 @@ import yfinance as yf
 import pandas as pd
 import requests
 import os
+import time
 
 WEBHOOK_URL = os.environ.get("WEBHOOK")
 
-# PayPay証券で取引される代表的な日本株・米国株の主要銘柄リスト
+# PayPay証券で取引可能な代表的・主要な日本株および米国株の拡張リスト
 TICKERS = {
-    # 日本株（高配当・人気株）
+    # 日本株（主要・高配当・グロース）
     "トヨタ自動車": "7203.T",
     "三菱UFJフィナンシャル・グループ": "8306.T",
     "日本電信電話 (NTT)": "9432.T",
@@ -23,8 +24,18 @@ TICKERS = {
     "オリックス": "8591.T",
     "キーエンス": "6861.T",
     "ファーストリテイリング": "9983.T",
-    
-    # 米国株（GAFAM・主要ハイテク・高配当）
+    "東京エレクトロン": "8035.T",
+    "リクルートホールディングス": "6098.T",
+    "信越化学工業": "4063.T",
+    "日立製作所": "6501.T",
+    "三菱重工業": "7011.T",
+    "富士通": "6702.T",
+    "デンソー": "6902.T",
+    "コマツ": "6301.T",
+    "パナソニック ホールディングス": "6752.T",
+    "ENEOSホールディングス": "5020.T",
+
+    # 米国株（GAFAM・主要ハイテク・バリュー・高配当）
     "Apple": "AAPL",
     "Microsoft": "MSFT",
     "NVIDIA": "NVDA",
@@ -35,21 +46,34 @@ TICKERS = {
     "Netflix": "NFLX",
     "Intel": "INTC",
     "AMD": "AMD",
+    "Qualcomm": "QCOM",
+    "Broadcom": "AVGO",
+    "Adobe": "ADBE",
+    "Salesforce": "CRM",
     "Coca-Cola": "KO",
     "PepsiCo": "PEP",
     "Procter & Gamble": "PG",
     "Johnson & Johnson": "JNJ",
+    "Pfizer": "PFE",
+    "Merck": "MRK",
     "JPMorgan Chase": "JPM",
+    "Bank of America": "BAC",
     "Visa": "V",
     "Mastercard": "MA",
     "Walmart": "WMT",
+    "Costco": "COST",
+    "McDonald's": "MCD",
     "Disney": "DIS",
+    "Nike": "NKE",
     "Exxon Mobil": "XOM",
+    "Chevron": "CVX",
     
     # 主要ETF
     "S&P 500 ETF (SPY)": "SPY",
     "NASDAQ 100 ETF (QQQ)": "QQQ",
-    "高配当株ETF (VYM)": "VYM"
+    "ダウ工業株30種平均ETF (DIA)": "DIA",
+    "高配当株ETF (VYM)": "VYM",
+    "Vanguard Total Stock Market (VTI)": "VTI"
 }
 
 def calculate_rsi(data, period=14):
@@ -68,6 +92,8 @@ def check_signals():
             stock = yf.Ticker(ticker)
             hist = stock.history(period="3mo")
             if hist.empty or len(hist) < 25:
+                # データが足りない場合はスキップして次の銘柄へ
+                time.sleep(1.0)
                 continue
 
             hist['SMA5'] = hist['Close'].rolling(window=5).mean()
@@ -106,6 +132,9 @@ def check_signals():
         except Exception as e:
             print(f"エラー: {name} - {e}")
 
+        # サーバーに負荷をかけず確実に取得するため、1銘柄ごとに1秒間スパンを開ける
+        time.sleep(1.0)
+
     return buy_list, sell_list
 
 def send_discord(buy_list, sell_list):
@@ -113,16 +142,16 @@ def send_discord(buy_list, sell_list):
         print("Webhook URLが設定されていません。")
         return
 
-    # Discordの文字数制限対策としてメッセージを分割・調整
-    message = "📊 **【定期確認】株式シグナルレポート（主要銘柄網羅版）**\n\n"
+    # 多くの銘柄がヒットした場合にDiscordの文字数制限（2000文字）を超えないよう上位20件に制限
+    message = "📊 **【定期確認】株式シグナルレポート（全主要銘柄チェック版）**\n\n"
     
     if buy_list:
-        message += "🟢 **【買い候補】**\n" + "\n".join(buy_list[:15]) + "\n\n"
+        message += "🟢 **【買い候補】**\n" + "\n".join(buy_list[:20]) + "\n\n"
     else:
         message += "🟢 **【買い候補】**\n・現在条件を満たす銘柄はありません。\n\n"
 
     if sell_list:
-        message += "🔴 **【売り候補】**\n" + "\n".join(sell_list[:15]) + "\n\n"
+        message += "🔴 **【売り候補】**\n" + "\n".join(sell_list[:20]) + "\n\n"
     else:
         message += "🔴 **【売り候補】**\n・現在条件を満たす銘柄はありません。\n\n"
 
